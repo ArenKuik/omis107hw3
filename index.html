@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pomodoro Timer</title>
+  <style>
+    :root {
+      --bg: #fdf6f0;
+      --surface: #ffffff;
+      --text: #2b2b2b;
+      --muted: #7a7a7a;
+      --accent: #e0563b;
+      --track: #f0e2da;
+      --border: #ecdcd2;
+    }
+    body.short { --accent: #2f9e8f; --track: #d9eeeb; --bg: #f1f9f8; --border: #d3e7e4; }
+    body.long  { --accent: #4a6fd1; --track: #dde5f8; --bg: #f2f5fd; --border: #d6def3; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1d1a19; --surface: #282423; --text: #f1ece9; --muted: #a59d99; --track: #3a302c; --border: #3a3330; }
+      body.short { --bg: #161d1c; --track: #26403c; --border: #2b3a38; }
+      body.long  { --bg: #171a22; --track: #2a3350; --border: #2c3344; }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      transition: background 0.4s;
+    }
+    main {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      text-align: center;
+    }
+    h1 { margin: 0 0 20px; font-size: 1.25rem; font-weight: 600; }
+
+    .modes { display: flex; gap: 6px; justify-content: center; margin-bottom: 24px; flex-wrap: wrap; }
+    .modes button {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .modes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .ring { position: relative; width: 240px; height: 240px; margin: 0 auto 24px; max-width: 100%; }
+    .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .ring circle { fill: none; stroke-width: 10; }
+    .ring .track { stroke: var(--track); }
+    .ring .progress { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 0.3s linear; }
+    .ring .time {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    #clock { font-size: 3.4rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+    #label { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+
+    .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+    .controls button {
+      font: inherit; font-weight: 600; cursor: pointer;
+      border-radius: 12px; padding: 12px 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--text);
+    }
+    .controls #start { background: var(--accent); border-color: var(--accent); color: #fff; min-width: 120px; }
+
+    .stats { color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+    .dots { display: inline-flex; gap: 6px; vertical-align: middle; margin-left: 6px; }
+    .dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--track); }
+    .dots span.on { background: var(--accent); }
+
+    details { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; }
+    summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+    .settings { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center; margin-top: 14px; font-size: 0.9rem; }
+    .settings input[type="number"] {
+      width: 72px; padding: 6px 8px; font: inherit; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pomodoro Timer</h1>
+
+    <div class="modes" role="group" aria-label="Timer mode">
+      <button data-mode="focus" aria-pressed="true">Focus</button>
+      <button data-mode="short" aria-pressed="false">Short break</button>
+      <button data-mode="long" aria-pressed="false">Long break</button>
+    </div>
+
+    <div class="ring">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="track" cx="60" cy="60" r="52"></circle>
+        <circle class="progress" cx="60" cy="60" r="52"></circle>
+      </svg>
+      <div class="time">
+        <div id="clock" aria-live="polite">25:00</div>
+        <div id="label">Time to focus</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="start">Start</button>
+      <button id="reset" title="Reset (R)">Reset</button>
+      <button id="skip" title="Skip (S)">Skip</button>
+    </div>
+
+    <div class="stats">
+      Sessions today: <strong id="count">0</strong>
+      <span class="dots" id="dots"></span>
+    </div>
+
+    <details>
+      <summary>Settings</summary>
+      <div class="settings">
+        <label for="focusMin">Focus (minutes)</label>
+        <input id="focusMin" type="number" min="1" max="120" value="25">
+        <label for="shortMin">Short break (minutes)</label>
+        <input id="shortMin" type="number" min="1" max="60" value="5">
+        <label for="longMin">Long break (minutes)</label>
+        <input id="longMin" type="number" min="1" max="60" value="15">
+        <label for="interval">Long break every N sessions</label>
+        <input id="interval" type="number" min="2" max="10" value="4">
+        <label for="autoStart">Auto-start next session</label>
+        <input id="autoStart" type="checkbox">
+      </div>
+    </details>
+  </main>
+
+  <script>
+    const LABELS = { focus: "Time to focus", short: "Short break", long: "Long break" };
+    const STORE_KEY = "pomodoro-state-v1";
+    const today = new Date().toDateString();
+
+    const $ = (id) => document.getElementById(id);
+    const progress = document.querySelector(".progress");
+    const CIRC = 2 * Math.PI * 52;
+    progress.style.strokeDasharray = CIRC;
+
+    const settings = { focusMin: 25, shortMin: 5, longMin: 15, interval: 4, autoStart: false };
+    let count = 0;
+    let mode = "focus";
+    let remaining = 0;   // seconds
+    let endAt = null;    // timestamp when running, null when paused
+    let tick = null;
+
+    function load() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+        Object.assign(settings, saved.settings || {});
+        if (saved.day === today) count = saved.count || 0;
+      } catch (e) { /* storage unavailable; use defaults */ }
+    }
+    function save() {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify({ settings, count, day: today }));
+      } catch (e) { /* ignore */ }
+    }
+
+    const duration = (m = mode) => settings[m + "Min"] * 60;
+    const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+    function render() {
+      const secs = Math.max(0, Math.ceil(remaining));
+      $("clock").textContent = fmt(secs);
+      $("label").textContent = LABELS[mode];
+      $("start").textContent = endAt ? "Pause" : (remaining < duration() ? "Resume" : "Start");
+      progress.style.strokeDashoffset = CIRC * (1 - secs / duration());
+      document.title = `${fmt(secs)} · ${mode === "focus" ? "Focus" : "Break"}`;
+      document.body.className = mode === "focus" ? "" : mode;
+      document.querySelectorAll(".modes button").forEach((b) =>
+        b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+      $("count").textContent = count;
+      const dots = $("dots");
+      dots.innerHTML = "";
+      const filled = count % settings.interval || (count && mode === "long" ? settings.interval : 0);
+      for (let i = 0; i < settings.interval; i++) {
+        const d = document.createElement("span");
+        if (i < filled) d.className = "on";
+        dots.appendChild(d);
+      }
+    }
+
+    function setMode(m) {
+      pause();
+      mode = m;
+      remaining = duration();
+      render();
+    }
+
+    function start() {
+      if (endAt) return;
+      endAt = Date.now() + remaining * 1000;
+      tick = setInterval(update, 250);
+      render();
+    }
+    function pause() {
+      if (!endAt) return;
+      remaining = (endAt - Date.now()) / 1000;
+      endAt = null;
+      clearInterval(tick);
+      render();
+    }
+    function update() {
+      remaining = (endAt - Date.now()) / 1000;
+      if (remaining <= 0) return complete();
+      render();
+    }
+
+    function complete() {
+      endAt = null;
+      clearInterval(tick);
+      beep();
+      notify();
+      if (mode === "focus") {
+        count++;
+        save();
+        setMode(count % settings.interval === 0 ? "long" : "short");
+      } else {
+        setMode("focus");
+      }
+      if (settings.autoStart) start();
+    }
+
+    function beep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 0.25, 0.5].forEach((t) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.frequency.value = 880;
+          g.gain.setValueAtTime(0.2, ctx.currentTime + t);
+          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.2);
+          o.connect(g).connect(ctx.destination);
+          o.start(ctx.currentTime + t);
+          o.stop(ctx.currentTime + t + 0.2);
+        });
+      } catch (e) { /* audio unavailable */ }
+    }
+    function notify() {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      new Notification(mode === "focus" ? "Focus session done — take a break!" : "Break over — back to focus!");
+    }
+
+    $("start").addEventListener("click", () => {
+      if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+      endAt ? pause() : start();
+    });
+    $("reset").addEventListener("click", () => setMode(mode));
+    $("skip").addEventListener("click", () => setMode(mode === "focus" ? "short" : "focus"));
+    document.querySelectorAll(".modes button").forEach((b) =>
+      b.addEventListener("click", () => setMode(b.dataset.mode)));
+
+    ["focusMin", "shortMin", "longMin", "interval"].forEach((k) => {
+      $(k).addEventListener("change", (e) => {
+        const v = parseInt(e.target.value, 10);
+        if (!Number.isFinite(v) || v < +e.target.min) { e.target.value = settings[k]; return; }
+        settings[k] = Math.min(v, +e.target.max);
+        e.target.value = settings[k];
+        save();
+        if (!endAt) remaining = duration();
+        render();
+      });
+    });
+    $("autoStart").addEventListener("change", (e) => { settings.autoStart = e.target.checked; save(); });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT") return;
+      if (e.code === "Space") { e.preventDefault(); $("start").click(); }
+      else if (e.key === "r") $("reset").click();
+      else if (e.key === "s") $("skip").click();
+    });
+
+    load();
+    ["focusMin", "shortMin", "longMin", "interval"].forEach((k) => ($(k).value = settings[k]));
+    $("autoStart").checked = settings.autoStart;
+    setMode("focus");
+  </script>
+</body>
+</html>
