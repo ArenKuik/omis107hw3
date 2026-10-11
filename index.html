@@ -13,11 +13,18 @@
       --accent: #e0563b;
       --track: #f0e2da;
       --border: #ecdcd2;
+      --leaf: #4f9a4a;
+      --leaf-2: #6fb565;
+      --bark: #7a5236;
+      --soil: #b98f6e;
+      --blossom: #f4a6c0;
+      --fruit: #d9443a;
     }
     body.short { --accent: #2f9e8f; --track: #d9eeeb; --bg: #f1f9f8; --border: #d3e7e4; }
     body.long  { --accent: #4a6fd1; --track: #dde5f8; --bg: #f2f5fd; --border: #d6def3; }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #1d1a19; --surface: #282423; --text: #f1ece9; --muted: #a59d99; --track: #3a302c; --border: #3a3330; }
+      :root { --bg: #1d1a19; --surface: #282423; --text: #f1ece9; --muted: #a59d99; --track: #3a302c; --border: #3a3330;
+              --leaf: #5fae58; --leaf-2: #82c777; --bark: #a07352; --soil: #6b5040; --blossom: #e98fb0; --fruit: #e8584d; }
       body.short { --bg: #161d1c; --track: #26403c; --border: #2b3a38; }
       body.long  { --bg: #171a22; --track: #2a3350; --border: #2c3344; }
     }
@@ -84,9 +91,28 @@
     .dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--track); }
     .dots span.on { background: var(--accent); }
 
+    .garden {
+      border-top: 1px solid var(--border);
+      padding: 16px 0 12px;
+      margin-bottom: 4px;
+    }
+    .garden svg { width: 100%; max-width: 240px; height: auto; display: block; margin: 0 auto; }
+    .garden .stage { font-weight: 600; margin-top: 6px; }
+    .garden .next { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+    .garden .bar { height: 6px; border-radius: 3px; background: var(--track); margin: 10px auto 0; max-width: 240px; overflow: hidden; }
+    .garden .bar div { height: 100%; background: var(--leaf); width: 0; transition: width 0.6s; }
+    #tree { transform-box: view-box; transform-origin: 100px 180px; transition: transform 0.8s ease; }
+    .part { transform-box: fill-box; transform-origin: center; transition: opacity 0.5s, transform 0.5s cubic-bezier(.3,1.6,.5,1); }
+    .part:not(.show) { opacity: 0; transform: scale(0); }
+    .trunk { stroke: var(--bark); stroke-linecap: round; fill: none; }
+
     details { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; }
     summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
     .settings { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center; margin-top: 14px; font-size: 0.9rem; }
+    .settings button {
+      font: inherit; font-size: 0.85rem; cursor: pointer; padding: 6px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    }
     .settings input[type="number"] {
       width: 72px; padding: 6px 8px; font: inherit; border-radius: 8px;
       border: 1px solid var(--border); background: var(--bg); color: var(--text);
@@ -125,6 +151,33 @@
       <span class="dots" id="dots"></span>
     </div>
 
+    <section class="garden" aria-label="Focus tree">
+      <svg viewBox="0 0 200 190" role="img" aria-labelledby="stage">
+        <ellipse cx="100" cy="182" rx="72" ry="7" fill="var(--soil)"></ellipse>
+        <ellipse id="seed" class="part" cx="100" cy="177" rx="5" ry="3.5" fill="var(--bark)"></ellipse>
+        <g id="sprout" class="part">
+          <path class="trunk" d="M100 180 Q99 170 100 160" stroke-width="2.5"></path>
+          <ellipse cx="93" cy="161" rx="7" ry="3.5" transform="rotate(-25 93 161)" fill="var(--leaf-2)"></ellipse>
+          <ellipse cx="107" cy="158" rx="7" ry="3.5" transform="rotate(25 107 158)" fill="var(--leaf)"></ellipse>
+        </g>
+        <g id="tree">
+          <g id="trunkGroup" class="part">
+            <path class="trunk" d="M100 180 L100 108" stroke-width="10"></path>
+            <path class="trunk" d="M100 142 L72 112" stroke-width="5"></path>
+            <path class="trunk" d="M100 132 L130 104" stroke-width="5"></path>
+            <path class="trunk" d="M100 116 L86 86" stroke-width="4"></path>
+            <path class="trunk" d="M100 112 L115 82" stroke-width="4"></path>
+          </g>
+          <g id="leaves"></g>
+          <g id="blossoms"></g>
+          <g id="fruits"></g>
+        </g>
+      </svg>
+      <div class="stage" id="stage">Seed</div>
+      <div class="next" id="nextStage"></div>
+      <div class="bar"><div id="stageBar"></div></div>
+    </section>
+
     <details>
       <summary>Settings</summary>
       <div class="settings">
@@ -138,6 +191,8 @@
         <input id="interval" type="number" min="2" max="10" value="4">
         <label for="autoStart">Auto-start next session</label>
         <input id="autoStart" type="checkbox">
+        <label for="resetTree">Start a new tree</label>
+        <button id="resetTree" type="button">Replant</button>
       </div>
     </details>
   </main>
@@ -154,6 +209,7 @@
 
     const settings = { focusMin: 25, shortMin: 5, longMin: 15, interval: 4, autoStart: false };
     let count = 0;
+    let total = 0;       // all-time focus sessions; drives tree growth
     let mode = "focus";
     let remaining = 0;   // seconds
     let endAt = null;    // timestamp when running, null when paused
@@ -164,11 +220,12 @@
         const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
         Object.assign(settings, saved.settings || {});
         if (saved.day === today) count = saved.count || 0;
+        total = saved.total || 0;
       } catch (e) { /* storage unavailable; use defaults */ }
     }
     function save() {
       try {
-        localStorage.setItem(STORE_KEY, JSON.stringify({ settings, count, day: today }));
+        localStorage.setItem(STORE_KEY, JSON.stringify({ settings, count, total, day: today }));
       } catch (e) { /* ignore */ }
     }
 
@@ -193,6 +250,63 @@
         const d = document.createElement("span");
         if (i < filled) d.className = "on";
         dots.appendChild(d);
+      }
+    }
+
+    // ---- Tree: each completed focus session adds a piece ----
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const TREE_FROM = 3;   // sessions before the sprout becomes a tree
+    const FULL_SIZE = 20;  // sessions until the tree reaches full size
+    const LEAVES = [[100,92,22],[78,104,18],[124,100,18],[88,78,18],[114,76,18],[66,90,14],[136,86,14],
+      [100,64,16],[72,118,12],[130,116,12],[80,62,12],[122,60,12],[100,104,16],[56,104,10],[146,102,10]];
+    const BLOSSOMS = [[90,88],[112,94],[80,100],[126,92],[100,72],[70,92],[132,108],[94,108],[116,70],[84,70]];
+    const FRUITS = [[104,82],[86,96],[120,104],[76,110],[128,84],[96,100],[110,64],[66,98],[138,96],[90,70]];
+    const LEAF_FROM = TREE_FROM;                      // one leaf cluster per session: 3–17
+    const BLOSSOM_FROM = FULL_SIZE;                   // blossoms: 20–29
+    const FRUIT_FROM = BLOSSOM_FROM + BLOSSOMS.length; // fruit: 30–39
+    const STAGES = [
+      [0, "Seed"], [1, "Sprout"], [TREE_FROM, "Sapling"], [8, "Young tree"], [15, "Mature tree"],
+      [BLOSSOM_FROM, "Blossoming tree"], [FRUIT_FROM, "Fruiting tree"], [FRUIT_FROM + FRUITS.length, "Ancient tree"],
+    ];
+
+    function addParts(group, items, from, make) {
+      items.forEach((item, i) => {
+        const el = make(item, i);
+        el.classList.add("part");
+        el.dataset.min = from + i;
+        group.appendChild(el);
+      });
+    }
+    function circle(cx, cy, r, fill) {
+      const c = document.createElementNS(SVG_NS, "circle");
+      c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", r); c.setAttribute("fill", fill);
+      return c;
+    }
+    addParts($("leaves"), LEAVES, LEAF_FROM, ([x, y, r], i) => circle(x, y, r, i % 2 ? "var(--leaf-2)" : "var(--leaf)"));
+    addParts($("blossoms"), BLOSSOMS, BLOSSOM_FROM, ([x, y]) => circle(x, y, 3, "var(--blossom)"));
+    addParts($("fruits"), FRUITS, FRUIT_FROM, ([x, y]) => circle(x, y, 3.5, "var(--fruit)"));
+    $("trunkGroup").dataset.min = TREE_FROM;
+
+    function renderTree() {
+      $("seed").classList.toggle("show", total === 0);
+      $("sprout").classList.toggle("show", total >= 1 && total < TREE_FROM);
+      document.querySelectorAll("#tree [data-min]").forEach((el) =>
+        el.classList.toggle("show", total >= +el.dataset.min));
+      const growth = Math.min(Math.max(total - TREE_FROM, 0) / (FULL_SIZE - TREE_FROM), 1);
+      $("tree").style.transform = `scale(${0.35 + 0.65 * growth})`;
+
+      let i = STAGES.length - 1;
+      while (STAGES[i][0] > total) i--;
+      const [at, name] = STAGES[i];
+      const next = STAGES[i + 1];
+      $("stage").textContent = `${name} · ${total} session${total === 1 ? "" : "s"}`;
+      if (next) {
+        const left = next[0] - total;
+        $("nextStage").textContent = `${left} more session${left === 1 ? "" : "s"} until: ${next[1]}`;
+        $("stageBar").style.width = `${((total - at) / (next[0] - at)) * 100}%`;
+      } else {
+        $("nextStage").textContent = "Fully grown. Keep focusing!";
+        $("stageBar").style.width = "100%";
       }
     }
 
@@ -229,7 +343,9 @@
       notify();
       if (mode === "focus") {
         count++;
+        total++;
         save();
+        renderTree();
         setMode(count % settings.interval === 0 ? "long" : "short");
       } else {
         setMode("focus");
@@ -278,6 +394,12 @@
       });
     });
     $("autoStart").addEventListener("change", (e) => { settings.autoStart = e.target.checked; save(); });
+    $("resetTree").addEventListener("click", () => {
+      if (!confirm("Replant your tree? Its growth will start over from a seed.")) return;
+      total = 0;
+      save();
+      renderTree();
+    });
 
     document.addEventListener("keydown", (e) => {
       if (e.target.tagName === "INPUT") return;
@@ -290,6 +412,7 @@
     ["focusMin", "shortMin", "longMin", "interval"].forEach((k) => ($(k).value = settings[k]));
     $("autoStart").checked = settings.autoStart;
     setMode("focus");
+    renderTree();
   </script>
 </body>
 </html>
