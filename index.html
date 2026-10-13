@@ -101,6 +101,7 @@
       <button data-mode="focus" aria-pressed="true">Focus</button>
       <button data-mode="short" aria-pressed="false">Short break</button>
       <button data-mode="long" aria-pressed="false">Long break</button>
+      <button data-mode="custom" aria-pressed="false">Stopwatch</button>
     </div>
 
     <div class="ring">
@@ -143,7 +144,7 @@
   </main>
 
   <script>
-    const LABELS = { focus: "Time to focus", short: "Short break", long: "Long break" };
+    const LABELS = { focus: "Time to focus", short: "Short break", long: "Long break", custom: "Stopwatch" };
     const STORE_KEY = "pomodoro-state-v1";
     const today = new Date().toDateString();
 
@@ -172,16 +173,17 @@
       } catch (e) { /* ignore */ }
     }
 
-    const duration = (m = mode) => settings[m + "Min"] * 60;
+    const duration = (m = mode) => m === "custom" ? 0 : settings[m + "Min"] * 60;
     const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
     function render() {
-      const secs = Math.max(0, Math.ceil(remaining));
+      const secs = mode === "custom" ? Math.floor(remaining) : Math.max(0, Math.ceil(remaining));
       $("clock").textContent = fmt(secs);
       $("label").textContent = LABELS[mode];
-      $("start").textContent = endAt ? "Pause" : (remaining < duration() ? "Resume" : "Start");
-      progress.style.strokeDashoffset = CIRC * (1 - secs / duration());
-      document.title = `${fmt(secs)} · ${mode === "focus" ? "Focus" : "Break"}`;
+      $("start").textContent = endAt ? "Pause" : (mode === "custom" ? (remaining > 0 ? "Resume" : "Start") : (remaining > 0 && remaining < duration() ? "Resume" : "Start"));
+      progress.style.strokeDashoffset = mode === "custom" ? CIRC : CIRC * (1 - secs / duration());
+      const titleMode = mode === "focus" ? "Focus" : mode === "custom" ? "Stopwatch" : "Break";
+      document.title = `${fmt(secs)} · ${titleMode}`;
       document.body.className = mode === "focus" ? "" : mode;
       document.querySelectorAll(".modes button").forEach((b) =>
         b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
@@ -205,19 +207,25 @@
 
     function start() {
       if (endAt) return;
-      endAt = Date.now() + remaining * 1000;
+      if (mode === "custom") {
+        endAt = Date.now() - remaining * 1000;
+      } else {
+        if (remaining <= 0) remaining = duration();
+        endAt = Date.now() + remaining * 1000;
+      }
       tick = setInterval(update, 250);
       render();
     }
     function pause() {
       if (!endAt) return;
-      remaining = (endAt - Date.now()) / 1000;
+      remaining = mode === "custom" ? (Date.now() - endAt) / 1000 : (endAt - Date.now()) / 1000;
       endAt = null;
       clearInterval(tick);
       render();
     }
     function update() {
-      remaining = (endAt - Date.now()) / 1000;
+      remaining = mode === "custom" ? (Date.now() - endAt) / 1000 : (endAt - Date.now()) / 1000;
+      if (mode === "custom") return render();
       if (remaining <= 0) return complete();
       render();
     }
@@ -234,7 +242,7 @@
       } else {
         setMode("focus");
       }
-      if (settings.autoStart) start();
+      if (settings.autoStart && mode !== "custom") start();
     }
 
     function beep() {
@@ -254,7 +262,12 @@
     }
     function notify() {
       if (!("Notification" in window) || Notification.permission !== "granted") return;
-      new Notification(mode === "focus" ? "Focus session done — take a break!" : "Break over — back to focus!");
+      const messages = {
+        focus: "Focus session done — take a break!",
+        short: "Break over — back to focus!",
+        long: "Break over — back to focus!",
+      };
+      new Notification(messages[mode]);
     }
 
     $("start").addEventListener("click", () => {
